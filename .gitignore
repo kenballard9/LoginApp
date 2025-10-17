@@ -1,0 +1,8 @@
+# Ignore Visual Studio cache and user-specific files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.userprefs
+bin/
+obj/

@@ -32,29 +32,6 @@ namespace LoginApp
                 flp.DragDrop += Column_DragDrop;
             }
 
-            // seed sample cards
-            _cards.Add(new KanbanCard
-            {
-                Title = "Design login form",
-                Description = "Username + password fields",
-                Column = ColumnKind.ToDo,
-                Tag = "auth"
-            });
-            _cards.Add(new KanbanCard
-            {
-                Title = "Implement Register",
-                Description = "Write to user store",
-                Column = ColumnKind.InProgress,
-                Tag = "auth"
-            });
-            _cards.Add(new KanbanCard
-            {
-                Title = "Wire Login",
-                Description = "Validate credentials",
-                Column = ColumnKind.Done,
-                Tag = "auth"
-            });
-
             RefreshBoard();
         }
 

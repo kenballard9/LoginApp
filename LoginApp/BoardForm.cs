@@ -1,86 +1,71 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace LoginApp
 {
     public partial class BoardForm : Form
     {
-        private readonly List<KanbanCard> _cards;
-        private readonly Dictionary<ColumnKind, FlowLayoutPanel> _columns;
+        private readonly List<KanbanCard> _cards = new List<KanbanCard>();
+        private readonly Dictionary<ColumnKind, FlowLayoutPanel> _columns =
+            new Dictionary<ColumnKind, FlowLayoutPanel>();
+
+        private CardControl _selected;
 
         public BoardForm()
         {
             InitializeComponent();
 
-            this.Text = "Kanban Board";
-            this.BackColor = Color.Gainsboro;
+            // map designer panels
+            _columns[ColumnKind.ToDo] = flpToDo;
+            _columns[ColumnKind.InProgress] = flpInProgress;
+            _columns[ColumnKind.Done] = flpDone;
 
-            int colWidth = 270;
-            ConfigureColumn(flpToDo, "TO DO", colWidth);
-            ConfigureColumn(flpInProgress, "IN PROGRESS", colWidth);
-            ConfigureColumn(flpDone, "DONE", colWidth);
-
-            _cards = new List<KanbanCard>();
-
-            _columns = new Dictionary<ColumnKind, FlowLayoutPanel>();
-            _columns.Add(ColumnKind.ToDo, flpToDo);
-            _columns.Add(ColumnKind.InProgress, flpInProgress);
-            _columns.Add(ColumnKind.Done, flpDone);
-
-            Seed();
-
-            // Drag target wiring
-            foreach (KeyValuePair<ColumnKind, FlowLayoutPanel> kvp in _columns)
+            // ensure drag targets configured
+            foreach (var flp in _columns.Values)
             {
-                FlowLayoutPanel flp = kvp.Value;
+                flp.AllowDrop = true;
                 flp.DragEnter += Column_DragEnter;
+                flp.DragOver += Column_DragOver;
                 flp.DragDrop += Column_DragDrop;
             }
-        }
 
-        private void ConfigureColumn(FlowLayoutPanel flp, string title, int width)
-        {
-            flp.Width = width;
-            flp.BackColor = Color.WhiteSmoke;
-            flp.Padding = new Padding(8);
-            flp.AutoScroll = true;
-            flp.AllowDrop = true;
-            flp.FlowDirection = FlowDirection.TopDown;
-            flp.WrapContents = false;
-
-            Label header = new Label();
-            header.Text = title;
-            header.Font = new Font("Segoe UI", 11, FontStyle.Bold);
-            header.AutoSize = true;
-            header.Margin = new Padding(3, 0, 3, 8);
-
-            // Make sure header is present only once
-            if (flp.Controls.Count == 0 || !(flp.Controls[0] is Label))
-                flp.Controls.Add(header);
-        }
-
-        private void Seed()
-        {
-            _cards.Add(new KanbanCard { Title = "Design login form", Description = "User + password fields", Column = ColumnKind.ToDo, Tag = "auth" });
-            _cards.Add(new KanbanCard { Title = "Implement Register", Description = "Write to store", Column = ColumnKind.InProgress, Tag = "auth" });
-            _cards.Add(new KanbanCard { Title = "Wire Login", Description = "Validate credentials", Column = ColumnKind.Done, Tag = "auth" });
+            // seed sample cards
+            _cards.Add(new KanbanCard
+            {
+                Title = "Design login form",
+                Description = "Username + password fields",
+                Column = ColumnKind.ToDo,
+                Tag = "auth"
+            });
+            _cards.Add(new KanbanCard
+            {
+                Title = "Implement Register",
+                Description = "Write to user store",
+                Column = ColumnKind.InProgress,
+                Tag = "auth"
+            });
+            _cards.Add(new KanbanCard
+            {
+                Title = "Wire Login",
+                Description = "Validate credentials",
+                Column = ColumnKind.Done,
+                Tag = "auth"
+            });
 
             RefreshBoard();
         }
 
+        // ==================== CORE RENDERING =====================
+
         private void RefreshBoard()
         {
-            // Clear everything except header (index 0)
-            foreach (KeyValuePair<ColumnKind, FlowLayoutPanel> kvp in _columns)
+            // clear all except header label
+            foreach (var kv in _columns)
             {
-                FlowLayoutPanel flp = kvp.Value;
+                var flp = kv.Value;
                 for (int i = flp.Controls.Count - 1; i >= 1; i--)
                 {
                     Control c = flp.Controls[i];
@@ -89,18 +74,122 @@ namespace LoginApp
                 }
             }
 
-            // Add cards to their columns
-            List<KanbanCard> ordered = _cards.OrderBy(c => c.Order).ToList();
-            for (int i = 0; i < ordered.Count; i++)
+            // add cards
+            foreach (KanbanCard card in _cards.OrderBy(c => c.Order))
             {
-                KanbanCard card = ordered[i];
-                FlowLayoutPanel target = _columns[card.Column];
-                target.Controls.Add(new CardControl(card));
+                CardControl cc = new CardControl(card);
+                WireCardHandlers(cc);
+                _columns[card.Column].Controls.Add(cc);
             }
         }
 
+        private void WireCardHandlers(CardControl cc)
+        {
+            cc.Selected += delegate { SelectCard(cc); };
+            cc.EditRequested += delegate { EditCard(cc); };
+            cc.DeleteRequested += delegate { DeleteCard(cc); };
+        }
+
+        private void SelectCard(CardControl cc)
+        {
+            if (_selected != null && _selected != cc)
+                _selected.SetSelected(false);
+
+            _selected = cc;
+            _selected.SetSelected(true);
+        }
+
+        // ==================== BUTTON ACTIONS =====================
+
+        private void btnAdd_Click(object sender, EventArgs e)
+        {
+            KanbanCard newCard = new KanbanCard
+            {
+                Title = "New Card",
+                Description = "",
+                Column = ColumnKind.ToDo,
+                Order = NextOrderFor(ColumnKind.ToDo)
+            };
+
+            using (EditCardDialog dlg = new EditCardDialog(newCard))
+            {
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                {
+                    _cards.Add(newCard);
+                    RefreshBoard();
+                }
+            }
+        }
+
+        private void btnEdit_Click(object sender, EventArgs e)
+        {
+            if (_selected == null)
+            {
+                MessageBox.Show("Select a card first.");
+                return;
+            }
+            EditCard(_selected);
+        }
+
+        private void btnDelete_Click(object sender, EventArgs e)
+        {
+            if (_selected == null)
+            {
+                MessageBox.Show("Select a card first.");
+                return;
+            }
+            DeleteCard(_selected);
+        }
+
+        // ==================== CARD ACTIONS =====================
+
+        private void EditCard(CardControl cc)
+        {
+            if (cc == null) return;
+            using (EditCardDialog dlg = new EditCardDialog(cc.Card))
+            {
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                    RefreshBoard();
+            }
+        }
+
+        private void DeleteCard(CardControl cc)
+        {
+            if (cc == null) return;
+            DialogResult res = MessageBox.Show(
+                "Delete this card?",
+                "Confirm Delete",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (res == DialogResult.Yes)
+            {
+                _cards.Remove(cc.Card);
+                RefreshBoard();
+            }
+        }
+
+        private int NextOrderFor(ColumnKind col)
+        {
+            int max = -1;
+            foreach (KanbanCard c in _cards)
+                if (c.Column == col && c.Order > max)
+                    max = c.Order;
+            return max + 1;
+        }
+
+        // ==================== DRAG / DROP =====================
+
         private void Column_DragEnter(object sender, DragEventArgs e)
         {
+            if (e.Data != null && e.Data.GetDataPresent(typeof(CardControl)))
+                e.Effect = DragDropEffects.Move;
+            else
+                e.Effect = DragDropEffects.None;
+        }
+
+        private void Column_DragOver(object sender, DragEventArgs e)
+        {
+            // this is crucial; without it, drop never fires
             if (e.Data != null && e.Data.GetDataPresent(typeof(CardControl)))
                 e.Effect = DragDropEffects.Move;
             else
@@ -113,51 +202,54 @@ namespace LoginApp
                 return;
 
             CardControl cardCtrl = e.Data.GetData(typeof(CardControl)) as CardControl;
-            FlowLayoutPanel sourcePanel = cardCtrl != null ? cardCtrl.Parent as FlowLayoutPanel : null;
-            FlowLayoutPanel targetPanel = sender as FlowLayoutPanel;
+            if (cardCtrl == null) return;
 
-            if (cardCtrl == null || sourcePanel == null || targetPanel == null || sourcePanel == targetPanel)
+            FlowLayoutPanel sourcePanel = cardCtrl.Parent as FlowLayoutPanel;
+            FlowLayoutPanel targetPanel = sender as FlowLayoutPanel;
+            if (sourcePanel == null || targetPanel == null || sourcePanel == targetPanel)
                 return;
 
-            // Update model
-            KanbanCard card = cardCtrl.Card;
-            ColumnKind newColumn = GetColumnKindForPanel(targetPanel);
-            card.Column = newColumn;
-
-            // Move control in UI (replace with fresh control to ensure layout refresh)
-            sourcePanel.Controls.Remove(cardCtrl);
-            cardCtrl.Dispose();
-            targetPanel.Controls.Add(new CardControl(card));
-
-            // Recalculate order within the target column
-            ReorderColumn(newColumn, targetPanel);
-        }
-
-        private ColumnKind GetColumnKindForPanel(FlowLayoutPanel panel)
-        {
-            foreach (KeyValuePair<ColumnKind, FlowLayoutPanel> kvp in _columns)
+            // Determine target column
+            ColumnKind targetCol = ColumnKind.ToDo;
+            foreach (KeyValuePair<ColumnKind, FlowLayoutPanel> kv in _columns)
             {
-                if (kvp.Value == panel) return kvp.Key;
+                if (kv.Value == targetPanel)
+                {
+                    targetCol = kv.Key;
+                    break;
+                }
             }
-            return ColumnKind.ToDo; // fallback
+
+            // update model
+            cardCtrl.Card.Column = targetCol;
+
+            // physically move control
+            sourcePanel.Controls.Remove(cardCtrl);
+            targetPanel.Controls.Add(cardCtrl);
+
+            // refresh order numbers
+            ReorderColumn(targetCol, targetPanel);
+            ReorderColumn(GetColumnKind(sourcePanel), sourcePanel);
+
+            SelectCard(cardCtrl);
         }
 
-        private void ReorderColumn(ColumnKind column, FlowLayoutPanel panel)
+        private void ReorderColumn(ColumnKind col, FlowLayoutPanel panel)
         {
-            int headerOffset = 1; // header label at index 0
-            for (int i = headerOffset; i < panel.Controls.Count; i++)
+            int offset = 1; // header label index
+            for (int i = offset; i < panel.Controls.Count; i++)
             {
                 CardControl cc = panel.Controls[i] as CardControl;
                 if (cc != null)
-                {
-                    cc.Card.Order = i - headerOffset;
-                }
+                    cc.Card.Order = i - offset;
             }
         }
 
-        private void flpToDo_Paint(object sender, PaintEventArgs e)
+        private ColumnKind GetColumnKind(FlowLayoutPanel flp)
         {
-
+            foreach (KeyValuePair<ColumnKind, FlowLayoutPanel> kv in _columns)
+                if (kv.Value == flp) return kv.Key;
+            return ColumnKind.ToDo;
         }
     }
 }

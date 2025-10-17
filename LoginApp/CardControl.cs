@@ -1,104 +1,103 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace LoginApp
 {
-    // NOTE: not 'partial' anymore since we aren't using a Designer file
+    // Not partial – we’re not using a Designer file for this control
     public class CardControl : UserControl
     {
-        public KanbanCard Card { get; private set; }
+        public KanbanCard Card { get; }
+
+        public event Action<CardControl> Selected;
+        public event Action<CardControl> EditRequested;
+        public event Action<CardControl> DeleteRequested;
+
+        private bool _selected;
 
         public CardControl(KanbanCard card)
         {
+            // No InitializeComponent() – UI is built entirely in code
             Card = card;
 
-            // Defaults that a Designer would usually set
-            this.Name = "CardControl";
-            this.AutoScaleMode = AutoScaleMode.None;
-            this.Margin = new Padding(6);
-            this.Padding = new Padding(8);
-            this.BackColor = Color.White;
-            this.BorderStyle = BorderStyle.FixedSingle;
-            this.Width = 240; // FlowLayoutPanel will wrap height
-            this.Cursor = Cursors.SizeAll; // hint that it can be dragged
+            Margin = new Padding(6);
+            Padding = new Padding(8);
+            BackColor = Color.White;
+            BorderStyle = BorderStyle.FixedSingle;
+            Width = 240;
+            Cursor = Cursors.SizeAll; // show move cursor
 
-            // Build the UI in code
             var lblTitle = new Label
             {
                 Text = card.Title,
                 AutoSize = true,
-                Font = new Font("Segoe UI", 10, FontStyle.Bold)
+                Font = new Font("Segoe UI", 10, FontStyle.Bold),
+                Dock = DockStyle.Top
             };
 
             var lblTag = new Label
             {
-                Text = string.IsNullOrWhiteSpace(card.Tag) ? "" : ("#" + card.Tag),
+                Text = string.IsNullOrWhiteSpace(card.Tag) ? "" : $"#{card.Tag}",
                 AutoSize = true,
-                ForeColor = Color.DimGray
+                ForeColor = Color.DimGray,
+                Dock = DockStyle.Top
             };
 
             var lblDesc = new Label
             {
                 Text = card.Description,
                 AutoSize = true,
-                MaximumSize = new Size(this.Width - 16, 0)
+                MaximumSize = new Size(Width - 16, 0),
+                Dock = DockStyle.Top
             };
 
-            var panel = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 1,
-                AutoSize = true
-            };
-            panel.RowStyles.Clear();
-            panel.Controls.Add(lblTitle);
-            panel.Controls.Add(lblTag);
+            var panel = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
             panel.Controls.Add(lblDesc);
+            panel.Controls.Add(lblTag);
+            panel.Controls.Add(lblTitle);
 
-            this.Controls.Add(panel);
+            Controls.Add(panel);
 
-            // Enable drag source
-            this.MouseDown += (s, e) =>
+            // Right-click menu
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("Edit...", null, (s, e) => { var h = EditRequested; if (h != null) h(this); });
+            menu.Items.Add("Delete", null, (s, e) => { var h = DeleteRequested; if (h != null) h(this); });
+            ContextMenuStrip = menu;
+
+            // Make everything inside draggable
+            AddDragHandlers(this);
+            foreach (Control c in Controls)
+                AddDragHandlers(c);
+
+            // Left-click selects
+            MouseClick += (s, e) =>
             {
                 if (e.Button == MouseButtons.Left)
-                    DoDragDrop(this, DragDropEffects.Move);
+                {
+                    var h = Selected;
+                    if (h != null) h(this);
+                }
             };
-
-            // Right-click quick edit/delete
-            var menu = new ContextMenuStrip();
-            menu.Items.Add("Edit...", null, (s, e) => OnEdit());
-            menu.Items.Add("Delete", null, (s, e) =>
-            {
-                if (this.Parent != null)
-                    this.Parent.Controls.Remove(this);
-            });
-            this.ContextMenuStrip = menu;
         }
 
-       private void OnEdit()
+        private void AddDragHandlers(Control ctl)
         {
-            // If you don't have an EditCardDialog yet, you can remove this method
-            // or guard it with an #if until it's implemented.
-            using (var dlg = new EditCardDialog(Card))
+            ctl.MouseDown += Card_MouseDown;
+        }
+
+        private void Card_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
             {
-                if (dlg.ShowDialog() == DialogResult.OK)
-                {
-                    // simple refresh
-                    this.Controls.Clear();
-                    var refreshed = new CardControl(Card) { Width = this.Width };
-                    if (this.Parent != null)
-                    {
-                        this.Parent.Controls.Add(refreshed);
-                        this.Parent.Controls.Remove(this);
-                    }
-                    refreshed.BringToFront();
-                }
+                // start drag for the whole card
+                DoDragDrop(this, DragDropEffects.Move);
             }
+        }
+
+        public void SetSelected(bool selected)
+        {
+            _selected = selected;
+            BackColor = selected ? Color.LightBlue : Color.White;
         }
     }
 }

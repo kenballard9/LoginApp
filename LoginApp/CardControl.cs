@@ -4,28 +4,28 @@ using System.Windows.Forms;
 
 namespace LoginApp
 {
-    // Not partial – we’re not using a Designer file for this control
+    // No Designer file for this control
     public class CardControl : UserControl
     {
         public KanbanCard Card { get; }
 
-        public event Action<CardControl> Selected;
-        public event Action<CardControl> EditRequested;
-        public event Action<CardControl> DeleteRequested;
+        // Use EventHandler so BoardForm wiring like `cc.Selected += delegate { ... }` works cleanly
+        public event EventHandler Selected;
+        public event EventHandler EditRequested;
+        public event EventHandler DeleteRequested;
 
-        private bool _selected;
+        private bool _isSelected;
 
         public CardControl(KanbanCard card)
         {
-            // No InitializeComponent() – UI is built entirely in code
-            Card = card;
+            Card = card; // UI is built entirely in code
 
             Margin = new Padding(6);
             Padding = new Padding(8);
             BackColor = Color.White;
             BorderStyle = BorderStyle.FixedSingle;
             Width = 240;
-            Cursor = Cursors.SizeAll; // show move cursor
+            Cursor = Cursors.SizeAll; // hint it can be dragged
 
             var lblTitle = new Label
             {
@@ -37,7 +37,7 @@ namespace LoginApp
 
             var lblTag = new Label
             {
-                Text = string.IsNullOrWhiteSpace(card.Tag) ? "" : $"#{card.Tag}",
+                Text = string.IsNullOrWhiteSpace(card.Tag) ? "" : ("#" + card.Tag),
                 AutoSize = true,
                 ForeColor = Color.DimGray,
                 Dock = DockStyle.Top
@@ -51,52 +51,53 @@ namespace LoginApp
                 Dock = DockStyle.Top
             };
 
-            var panel = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
-            panel.Controls.Add(lblDesc);
-            panel.Controls.Add(lblTag);
-            panel.Controls.Add(lblTitle);
+            var content = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+            content.Controls.Add(lblDesc);
+            content.Controls.Add(lblTag);
+            content.Controls.Add(lblTitle);
 
-            Controls.Add(panel);
+            Controls.Add(content);
 
-            // Right-click menu
+            // Context menu (Edit/Delete)
             var menu = new ContextMenuStrip();
-            menu.Items.Add("Edit...", null, (s, e) => { var h = EditRequested; if (h != null) h(this); });
-            menu.Items.Add("Delete", null, (s, e) => { var h = DeleteRequested; if (h != null) h(this); });
+            menu.Items.Add("Edit...", null, (s, e) => { var h = EditRequested; if (h != null) h(this, EventArgs.Empty); });
+            menu.Items.Add("Delete", null, (s, e) => { var h = DeleteRequested; if (h != null) h(this, EventArgs.Empty); });
             ContextMenuStrip = menu;
 
-            // Make everything inside draggable
-            AddDragHandlers(this);
-            foreach (Control c in Controls)
-                AddDragHandlers(c);
-
-            // Left-click selects
-            MouseClick += (s, e) =>
-            {
-                if (e.Button == MouseButtons.Left)
-                {
-                    var h = Selected;
-                    if (h != null) h(this);
-                }
-            };
+            // Make EVERYTHING (this control and all children) selectable + draggable
+            WireAllChildControls(this);
         }
 
-        private void AddDragHandlers(Control ctl)
+        // Wire recursively so clicks on labels/panel also select and start drag
+        private void WireAllChildControls(Control parent)
         {
-            ctl.MouseDown += Card_MouseDown;
+            parent.MouseDown += Card_MouseDown;
+
+            foreach (Control child in parent.Controls)
+            {
+                child.MouseDown += Card_MouseDown;
+                if (child.HasChildren)
+                    WireAllChildControls(child);
+            }
         }
 
+        // Select on MouseDown (before starting DoDragDrop) so click always selects
         private void Card_MouseDown(object sender, MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Left)
-            {
-                // start drag for the whole card
-                DoDragDrop(this, DragDropEffects.Move);
-            }
+            if (e.Button != MouseButtons.Left)
+                return;
+
+            // Fire selection immediately
+            var sel = Selected;
+            if (sel != null) sel(this, EventArgs.Empty);
+
+            // Begin drag operation
+            DoDragDrop(this, DragDropEffects.Move);
         }
 
         public void SetSelected(bool selected)
         {
-            _selected = selected;
+            _isSelected = selected;
             BackColor = selected ? Color.LightBlue : Color.White;
         }
     }

@@ -70,24 +70,23 @@ namespace LoginApp
                 return;
             }
 
-            // Step 4: Login successful -> open BoardForm
+            // Step 4: Login successful -> open BoardForm (keep login hidden)
             MessageBox.Show("Login successful. Redirecting to board...", "Success");
 
-            this.Hide(); // hide login while board is open
+            // Hide the login form and show the board modelessly
+            this.Hide();
 
-            // Show the Kanban board; center on screen
-            using (var board = new BoardForm())
+            var board = new BoardForm
             {
-                board.StartPosition = FormStartPosition.CenterScreen;
+                StartPosition = FormStartPosition.CenterScreen
+            };
 
-                // Option A: Return to login after board closes (current behavior)
-                board.ShowDialog(this);
-                this.Show();
+            // When the board closes, close the (hidden) login form to end the app cleanly
+            board.FormClosed += (s, args) => this.Close();
 
-                // Option B: Exit the app after board closes (uncomment to use)
-                // board.ShowDialog(this);
-                // this.Close();
-            }
+            board.Show();
+            // DO NOT call this.Show() again — we want the login to remain hidden.
+            // DO NOT use ShowDialog() here — it would block and complicate lifetime.
         }
 
         private void LogIn_Load(object sender, EventArgs e)
